@@ -1,14 +1,26 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import { CreatePokemonDto } from './dto/create-pokemon.dto';
 import { UpdatePokemonDto } from './dto/update-pokemon.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Pokemon } from './entities/pokemon.entity';
 import { Model, isValidObjectId } from 'mongoose';
 import { json } from 'stream/consumers';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { ConfigService } from '@nestjs/config';
+import { Console } from 'console';
 
 @Injectable()
 export class PokemonService {
-  constructor(@InjectModel(Pokemon.name) private pokemonModel: Model<Pokemon>) {}
+  private defaultLimit:number;
+  constructor(
+    @InjectModel(Pokemon.name) 
+    private pokemonModel: Model<Pokemon>,
+    private readonly configService: ConfigService,
+    )  
+     {
+        this.defaultLimit = this.configService.get<number>('default_limit');
+       
+     }
 
   async create(createPokemonDto: CreatePokemonDto) : Promise<Pokemon> {
     createPokemonDto.name = createPokemonDto.name.toLowerCase();
@@ -21,8 +33,15 @@ export class PokemonService {
     
   }
 
- async findAll(): Promise<Pokemon[]> {
-    return this.pokemonModel.find().exec();
+ async findAll(paginationDto: PaginationDto): Promise<Pokemon[]> {
+    const {limit=this.defaultLimit, offset=0} = paginationDto;
+    
+    return this.pokemonModel.find()
+    .limit(limit)
+    .skip(offset)
+    .sort({no:1})
+    .select("-__v")
+    .exec();
   }
 
   async findOne(id: string): Promise<Pokemon> {
@@ -74,6 +93,14 @@ export class PokemonService {
       }
       return;
   }
+
+  async removeAll() {
+    const {deletedCount}= await this.pokemonModel.deleteMany().exec();
+    if(deletedCount === 0){
+      throw new BadRequestException(`Pokemon not deleted`);
+    }
+    return;
+}
 
   private handleExeption(error: any){
     if (error.code === 11000) { // duplicate key                                    keyValue
